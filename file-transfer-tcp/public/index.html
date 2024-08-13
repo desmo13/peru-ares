@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Envío de Archivos Seguros</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+        #fileInput {
+            margin: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Enviar Archivo</h1>
+    <input type="file" id="fileInput">
+    <button id="sendButton">Enviar</button>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const fileInput = document.getElementById('fileInput');
+        const sendButton = document.getElementById('sendButton');
+        const SECRET_KEY = 'supersecretkey';  // Debe ser compartida y segura
+        const CHUNK_SIZE = 64 * 1024;
+
+        const encrypt = (buffer, key) => {
+            const iv = crypto.getRandomValues(new Uint8Array(16));
+            const cipher = crypto.subtle.importKey('raw', key, 'AES-CBC', false, ['encrypt'])
+                .then((cryptoKey) => {
+                    return crypto.subtle.encrypt(
+                        { name: 'AES-CBC', iv: iv },
+                        cryptoKey,
+                        buffer
+                    );
+                });
+            return Buffer.concat([Buffer.from(iv), Buffer.from(cipher)]);
+        };
+
+        sendButton.addEventListener('click', () => {
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async function (event) {
+                    const arrayBuffer = event.target.result;
+                    for (let i = 0; i < arrayBuffer.byteLength; i += CHUNK_SIZE) {
+                        const chunk = arrayBuffer.slice(i, i + CHUNK_SIZE);
+                        const encryptedChunk = await encrypt(chunk, SECRET_KEY);
+                        socket.emit('file-chunk', encryptedChunk);
+                    }
+                    socket.emit('file-end');
+                    alert('Archivo enviado');
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert('Por favor, selecciona un archivo.');
+            }
+        });
+    </script>
+</body>
+</html>
